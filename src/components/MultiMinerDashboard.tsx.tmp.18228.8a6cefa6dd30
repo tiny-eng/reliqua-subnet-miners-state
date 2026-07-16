@@ -1,0 +1,157 @@
+'use client'
+
+import { useCallback, useEffect, useState } from 'react'
+import ChartsSection from './ChartsSection'
+import HotkeyController, { type HotkeySnapshot } from './HotkeyController'
+import HotkeyManager from './HotkeyManager'
+import StatsTable from './StatsTable'
+
+const SS58_REGEX = /^5[A-HJ-NP-Za-km-z1-9]{47}$/
+const STORAGE_KEY = 'reliquary-dashboard-hotkeys'
+const AUTOPULL_KEY = 'reliquary-dashboard-autopull-top'
+
+interface Props {
+  // Hotkeys parsed from the URL query string. Wins over localStorage when
+  // non-empty so linked dashboards stay reproducible.
+  urlHotkeys: string[]
+  // Seed hotkey rendered on first visit (no URL, no localStorage).
+  fallbackHotkey: string
+}
+
+function initialState(urlHotkeys: string[], fallbackHotkey: string): string[] {
+  if (urlHotkeys.length > 0) return urlHotkeys
+  if (fallbackHotkey && SS58_REGEX.test(fallbackHotkey)) return [fallbackHotkey]
+  return []
+}
+
+export default function MultiMinerDashboard({ urlHotkeys, fallbackHotkey }: Props) {
+  const [hotkeys, setHotkeys] = useState<string[]>(() =>
+    initialState(urlHotkeys, fallbackHotkey),
+  )
+  const [snapshots, setSnapshots] = useState<Record<string, HotkeySnapshot>>({})
+  const [hydrated, setHydrated] = useState(false)
+  // When off, the dashboard stops pulling /api/top-hotkeys (no auto-add of the
+  // current top miners). Defaults on; persisted across reloads.
+  const [autoPullTop, setAutoPullTop] = useState(true)
+
+  useEffect(() => {
+    try {
+      const t = localStorage.getItem(AUTOPULL_KEY)
+      if (t !== null) setAutoPullTop(t === '1')
+    } catch {
+      // ignore
+    }
+    if (urlHotkeys.length > 0) {
+      setHydrated(true)
+      return
+    }
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY)
+      if (stored !== null) {
+        const arr = JSON.parse(stored) as unknown
+        if (Array.isArray(arr)) {
+          const valid = arr.filter(
+            (h): h is string => typeof h === 'string' && SS58_REGEX.test(h),
+          )
+          setHotkeys(valid)
+        }
+      }
+    } catch {
+      // ignore
+    }
+    setHydrated(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!hydrated) return
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(hotkeys))
+    } catch {
+      // ignore
+    }
+  }, [hotkeys, hydrated])
+
+  useEffect(() => {
+    if (!hydrated) return
+    try {
+      localStorage.setItem(AUTOPULL_KEY, autoPullTop ? '1' : '0')
+    } catch {
+      // ignore
+    }
+  }, [autoPullTop, hydrated])
+
+  const addHotkey = useCallback((hk: string): boolean => {
+    const trimmed = hk.trim()
+    if (!SS58_REGEX.test(trimmed)) return false
+    let added = false
+    setHotkeys((prev) => {
+      if (prev.includes(trimmed)) return prev
+      added = true
+      return [...prev, trimmed]
+    })
+    return added
+  }, [])
+
+  const removeHotkey = useCallback((hk: string) => {
+    setHotkeys((prev) => prev.filter((h) => h !== hk))
+    setSnapshots((prev) => {
+      if (!(hk in prev)) return prev
+      const next = { ...prev }
+      delete next[hk]
+      return next
+    })
+  }, [])
+
+  const updateSnapshot = useCallback((hk: string, snap: HotkeySnapshot) => {
+    setSnapshots((prev) => ({ ...prev, [hk]: snap }))
+  }, [])
+
+  // Auto-add the current top 3 hotkeys (by accepted sample count over the last
+  // 5 windows): once the stored list has hydrated, then refreshed every 10
+  // minutes so newly-rising miners get pulled in. addHotkey() dedupes, so any
+  // hotkey already shown is skipped — no duplication.
+  useEffect(() => {
+    if (!hydrated) return
+    const REFRESH_MS = 10 * 60 * 1000 // 10 minutes
+    let cancelled = false
+
+    const fetchTopHotkeys = () => {
+      fetch('/api/top-hotkeys', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j: { top?: Array<{ hotkey: string }> } | null) => {
+          if (cancelled || !Array.isArray(j?.top)) return
+          for (const t of j!.top) {
+            if (typeof t?.hotkey === 'string') addHotkey(t.hotkey)
+          }
+        })
+        .catch(() => {
+          // top-hotkeys unavailable (e.g. upstream challenge) — non-fatal
+        })
+    }
+
+    fetchTopHotkeys() // immediately on load
+    const timer = setInterval(fetchTopHotkeys, REFRESH_MS)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [hydrated, addHotkey])
+
+  return (
+    <>
+      <HotkeyManager hotkeys={hotkeys} onAdd={addHotkey} />
+      {hotkeys.map((hk) => (
+        <HotkeyController key={hk} hotkey={hk} onSnapshot={updateSnapshot} />
+      ))}
+      {hotkeys.length === 0 ? (
+        <div className="empty-state">No hotkeys monitored. Add one above to start.</div>
+      ) : (
+        <>
+          <ChartsSection hotkeys={hotkeys} snapshots={snapshots} />
+          <StatsTable hotkeys={hotkeys} snapshots={snapshots} onRemove={removeHotkey} />
+        </>
+      )}
+    </>
+  )
+}

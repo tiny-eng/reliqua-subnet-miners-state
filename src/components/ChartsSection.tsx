@@ -1,0 +1,73 @@
+import type { HotkeySnapshot } from './HotkeyController'
+import ChartRow from './ChartRow'
+
+interface Props {
+  hotkeys: string[]
+  snapshots: Record<string, HotkeySnapshot | undefined>
+}
+
+const EMPTY_STRIP: HotkeySnapshot = {
+  data: null,
+  error: null,
+  lastFetchedAt: 0,
+  inFlight: false,
+  strip: [],
+  latestWindow: 0,
+}
+
+export default function ChartsSection({ hotkeys, snapshots }: Props) {
+  return (
+    <section className="charts-section">
+      <div className="section-header">
+        <h2>Last 72 windows &middot; per-submission dots</h2>
+        <div className="legend" aria-hidden="true">
+          <span className="legend-item">
+            <span className="swatch" style={{ background: 'var(--opencode)' }} />
+            opencode accepted
+          </span>
+          <span className="legend-item">
+            <span className="swatch" style={{ background: 'var(--openmath)' }} />
+            openmath accepted
+          </span>
+          <span className="legend-item">
+            <span className="swatch" style={{ background: 'var(--soft)' }} />
+            soft-failed
+          </span>
+          <span className="legend-item">
+            <span className="swatch" style={{ background: 'var(--hard)' }} />
+            hard-failed
+          </span>
+          <span className="legend-item muted">no submission</span>
+          <span className="legend-item">
+            <span className="reject-dot" data-kind="batch_filled" />
+            batch-filled reject
+          </span>
+          <span className="legend-item">
+            <span className="reject-dot" data-kind="other" />
+            other reject
+          </span>
+        </div>
+      </div>
+      <div className="chart-row-list">
+        {hotkeys.map((hk) => {
+          const snap = snapshots[hk] ?? EMPTY_STRIP
+          const apiStatus = snap.data?.miner?.status ?? '...'
+          const uid = snap.data?.miner?.uid
+          return (
+            <ChartRow
+              key={hk}
+              hotkey={hk}
+              uid={uid}
+              strip={snap.strip}
+              latestWindow={snap.latestWindow}
+              status={apiStatus}
+              inFlight={snap.inFlight}
+              error={snap.error}
+              lastFetchedAt={snap.lastFetchedAt}
+            />
+          )
+        })}
+      </div>
+    </section>
+  )
+}

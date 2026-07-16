@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Reliqua Bypass Cookie Courier",
+  "version": "1.0.0",
+  "description": "Harvests reliqua.ai clearance cookies (after you pass the Vercel challenge in-browser) and forwards them to the local Reliquary dashboard proxy so its server-side fetches stop getting challenged.",
+  "permissions": ["cookies", "alarms", "storage"],
+  "host_permissions": [
+    "https://www.reliqua.ai/*",
+    "https://reliqua.ai/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Sync reliqua.ai cookies to dashboard now" }
+}

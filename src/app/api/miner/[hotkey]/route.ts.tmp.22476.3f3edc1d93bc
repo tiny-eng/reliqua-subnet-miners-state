@@ -1,0 +1,165 @@
+import { NextResponse } from 'next/server'
+import { getBypass } from '@/lib/bypassStore'
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+const SS58_REGEX = /^5[A-HJ-NP-Za-km-z1-9]{47}$/
+
+// Mimic a real Chrome request so reliqua.ai's Vercel WAF doesn't immediately
+// flag us as a bot. UA + Sec-Fetch-* + Accept-* are the minimum a browser
+// would send.
+const BROWSER_HEADERS: Record<string, string> = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  Accept: 'application/json, text/plain, */*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Sec-Fetch-Dest': 'empty',
+  'Sec-Fetch-Mode': 'cors',
+  'Sec-Fetch-Site': 'same-origin',
+}
+
+// Tiny per-process cache so multiple hotkey panels polling at once don't pile
+// up duplicate upstream hits, and so a transient 403 doesn't wipe state we
+// already have. TTL is short — we still want freshness.
+interface CacheEntry {
+  body: string
+  status: number
+  contentType: string
+  expiresAt: number
+}
+const CACHE_TTL_MS = 4_000
+const cache = new Map<string, CacheEntry>()
+const inflight = new Map<string, Promise<CacheEntry>>()
+
+function buildUpstreamUrl(hotkey: string): string {
+  const base = process.env.RELIQUA_BASE_URL ?? 'https://www.reliqua.ai'
+  return `${base.replace(/\/$/, '')}/api/miners/${hotkey}`
+}
+
+function buildHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { ...BROWSER_HEADERS }
+  // Some reliqua.ai endpoints accept Referer/Origin matching their own domain.
+  const base = process.env.RELIQUA_BASE_URL ?? 'https://www.reliqua.ai'
+  headers.Referer = `${base.replace(/\/$/, '')}/`
+  headers.Origin = base.replace(/\/$/, '')
+  // Optional Vercel Protection Bypass — set this in .env.local if the
+  // reliqua.ai operator has issued you a bypass token. With this set, Vercel's
+  // bot challenge is skipped for our request.
+  // See: https://vercel.com/docs/security/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation
+  const bypass = process.env.RELIQUA_BYPASS_TOKEN
+  if (bypass) {
+    headers['x-vercel-protection-bypass'] = bypass
+    headers['x-vercel-set-bypass-cookie'] = 'true'
+  }
+  // Challenge-clearance cookie forwarded by the companion browser extension
+  // (see ../../../../extension), or a static RELIQUA_COOKIE in .env.local. A real
+  // browser solves reliqua.ai's Vercel Attack Mode challenge; we replay its
+  // cookies here so this server fetch is treated as the already-cleared client.
+  // The extension also forwards the browser's User-Agent — match it, since the
+  // clearance can be UA-bound.
+  const runtimeBypass = getBypass()
+  const cookie = process.env.RELIQUA_COOKIE ?? runtimeBypass.cookie
+  if (cookie) {
+    headers['Cookie'] = cookie
+    if (!process.env.RELIQUA_COOKIE && runtimeBypass.userAgent) {
+      headers['User-Agent'] = runtimeBypass.userAgent
+    }
+  }
+  return headers
+}
+
+async function fetchUpstream(hotkey: string): Promise<CacheEntry> {
+  const url = buildUpstreamUrl(hotkey)
+  const upstream = await fetch(url, {
+    cache: 'no-store',
+    signal: AbortSignal.timeout(15_000),
+    headers: buildHeaders(),
+    redirect: 'follow',
+  })
+  const body = await upstream.text()
+  const contentType = upstream.headers.get('content-type') ?? 'application/json'
+  return {
+    body,
+    status: upstream.status,
+    contentType,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  }
+}
+
+async function getEntry(hotkey: string): Promise<CacheEntry> {
+  const now = Date.now()
+  const hit = cache.get(hotkey)
+  if (hit && hit.expiresAt > now) return hit
+
+  const existing = inflight.get(hotkey)
+  if (existing) return existing
+
+  const promise = fetchUpstream(hotkey)
+    .then((entry) => {
+      // Only cache successful responses; let errors retry on the next poll so
+      // a transient challenge doesn't get stuck in cache for TTL ms.
+      if (entry.status >= 200 && entry.status < 300) {
+        cache.set(hotkey, entry)
+      } else {
+        cache.delete(hotkey)
+      }
+      return entry
+    })
+    .finally(() => {
+      inflight.delete(hotkey)
+    })
+  inflight.set(hotkey, promise)
+  return promise
+}
+
+function detectVercelChallenge(entry: CacheEntry): boolean {
+  if (entry.status !== 403) return false
+  const html = entry.body
+  return html.includes('Vercel Security Checkpoint') || html.includes('X-Vercel-Mitigated')
+}
+
+export async function GET(
+  _req: Request,
+  ctx: { params: Promise<{ hotkey: string }> },
+) {
+  const { hotkey } = await ctx.params
+
+  if (!SS58_REGEX.test(hotkey)) {
+    return NextResponse.json(
+      { error: 'invalid_hotkey', message: 'Hotkey must be a valid SS58 address.' },
+      { status: 400, headers: { 'Cache-Control': 'no-store' } },
+    )
+  }
+
+  try {
+    const entry = await getEntry(hotkey)
+
+    if (detectVercelChallenge(entry)) {
+      return NextResponse.json(
+        {
+          error: 'upstream_challenge',
+          message:
+            'reliqua.ai is serving a Vercel bot challenge from this network. Set RELIQUA_BYPASS_TOKEN in .env.local with the Vercel protection-bypass secret to skip it, or wait for the challenge to clear.',
+          upstreamStatus: 403,
+        },
+        { status: 503, headers: { 'Cache-Control': 'no-store' } },
+      )
+    }
+
+    return new NextResponse(entry.body, {
+      status: entry.status,
+      headers: {
+        'Content-Type': entry.contentType,
+        'Cache-Control': 'no-store',
+      },
+    })
+  } catch (e) {
+    const err = e as Error
+    return NextResponse.json(
+      { error: 'upstream_failed', message: err.message, url: buildUpstreamUrl(hotkey) },
+      { status: 502, headers: { 'Cache-Control': 'no-store' } },
+    )
+  }
+}
