@@ -13,7 +13,7 @@
 
   /* Accepted dots are colored by evaluation environment:
      opencode = green (same as the generic accepted green), openmath = blue. */
-  --opencode: #2ea043;
+  --opencode: #13f5f5;
   --openmath: #388bfd;
 }
 
