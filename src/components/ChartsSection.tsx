@@ -23,11 +23,15 @@ export default function ChartsSection({ hotkeys, snapshots }: Props) {
         <div className="legend" aria-hidden="true">
           <span className="legend-item">
             <span className="swatch" style={{ background: 'var(--opencode)' }} />
-            opencode accepted
+            opencode selected
           </span>
           <span className="legend-item">
             <span className="swatch" style={{ background: 'var(--openmath)' }} />
-            openmath accepted
+            openmath selected
+          </span>
+          <span className="legend-item">
+            <span className="swatch" style={{ background: 'var(--pooled)' }} />
+            pooled
           </span>
           <span className="legend-item">
             <span className="swatch" style={{ background: 'var(--soft)' }} />

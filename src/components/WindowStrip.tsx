@@ -16,14 +16,17 @@ export default function WindowStrip({ windows, latestWindow }: Props) {
       for (const s of w.slots) {
         if (s === 'accepted') {
           if (w.env === 'openmath') acc.openmath++
-          else acc.opencode++
+          else if (w.env === 'opencode') acc.opencode++
+          else acc.unknown++
+        } else if (s === 'pooled') {
+          acc.pooled++
         } else {
           acc[s]++
         }
       }
       return acc
     },
-    { opencode: 0, openmath: 0, soft: 0, hard: 0, blank: 0 },
+    { opencode: 0, openmath: 0, unknown: 0, pooled: 0, soft: 0, hard: 0, blank: 0 },
   )
   const windowsWithSubmissions = windows.filter((w) => w.submitted > 0).length
   return (
@@ -48,6 +51,14 @@ export default function WindowStrip({ windows, latestWindow }: Props) {
         <span className="legend-item">
           <span className="swatch" style={{ background: 'var(--openmath)' }} />
           openmath accepted ({slotCounts.openmath})
+        </span>
+        <span className="legend-item">
+          <span className="swatch" style={{ background: 'var(--accepted)' }} />
+          accepted, environment unknown ({slotCounts.unknown})
+        </span>
+        <span className="legend-item">
+          <span className="swatch" style={{ background: 'var(--pooled)' }} />
+          accepted into pool ({slotCounts.pooled})
         </span>
         <span className="legend-item">
           <span className="swatch" style={{ background: 'var(--soft)' }} />

@@ -43,6 +43,8 @@ export default function HotkeyController({ hotkey, onSnapshot }: Props) {
       mapRef.current,
       incoming,
       subnetCurrentWindow,
+      data.verdicts?.submissions,
+      data.ladderEnvironments,
     )
     mapRef.current = merged
     setLatestWindow(lw)

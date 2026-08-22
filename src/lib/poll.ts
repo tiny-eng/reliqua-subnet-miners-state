@@ -1,7 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type { MinerResponse } from './types'
+import type {
+  Env,
+  LadderResponse,
+  MinerResponse,
+  SubmissionVerdict,
+  VerdictResponse,
+  WindowDetail,
+} from './types'
 
 // Subnet windows are ~60s (WINDOW_LENGTH 5 x 12s), so polling much faster than
 // that just re-fetches identical data and hammers reliqua.ai's WAF into Attack
@@ -19,9 +26,55 @@ export interface PollState {
   inFlight: boolean
 }
 
-// Polls /api/miner/<hotkey> on a 7s ± 1.5s schedule. Aborts on unmount and on
-// hotkey change. Exponential backoff (capped at 8x = ~56s base) on persistent
-// upstream failure, reset on success.
+function dedupeSubmissions(response: VerdictResponse): SubmissionVerdict[] {
+  const source = Array.isArray(response.submissions)
+    ? response.submissions
+    : Array.isArray(response.verdicts)
+      ? response.verdicts
+      : []
+  const unique = new Map<string, SubmissionVerdict>()
+  for (const submission of source) {
+    if (typeof submission?.merkle_root === 'string') unique.set(submission.merkle_root, submission)
+  }
+  return [...unique.values()]
+}
+
+function makeVerdictData(response: VerdictResponse): MinerResponse {
+  const submissions = dedupeSubmissions(response)
+  const windows = [...new Set(submissions.map((submission) => submission.window_n))]
+    .filter((window) => Number.isFinite(window))
+    .sort((a, b) => a - b)
+  const windowDetail: WindowDetail[] = windows.map((window) => ({
+    window,
+    created_at: null,
+    score: 0,
+    submitted: submissions.filter((submission) => submission.window_n === window).length,
+    accepted: 0,
+    soft_failed: 0,
+    hard_failed: 0,
+    response_time_ms: null,
+  }))
+  return {
+    source: 'verdicts',
+    current_window: { window: windows.length ? Math.max(...windows) : undefined },
+    window_detail: windowDetail,
+    verdicts: { ...response, submissions },
+  }
+}
+
+function ladderEnv(response: LadderResponse, hotkey: string): Env {
+  for (const environment of response.environments ?? []) {
+    if (environment.rows?.some((row) => row.hotkey === hotkey)) {
+      if (environment.env_name === 'openmathinstruct') return 'openmath'
+      if (environment.env_name === 'opencodeinstruct') return 'opencode'
+    }
+  }
+  return 'unknown'
+}
+
+// Polls /api/verdicts/<hotkey> on a 30s ± 8s schedule. Aborts on unmount and on
+// hotkey change. Exponential backoff (capped at 8x) on persistent upstream
+// failure, reset on success.
 export function useMinerPoll(hotkey: string): PollState {
   const [data, setData] = useState<MinerResponse | null>(null)
   const [error, setError] = useState<Error | null>(null)
@@ -44,7 +97,7 @@ export function useMinerPoll(hotkey: string): PollState {
       if (cancelled) return
       setInFlight(true)
       try {
-        const r = await fetch(`/api/miner/${encodeURIComponent(hotkey)}`, {
+        const r = await fetch(`/api/verdicts/${encodeURIComponent(hotkey)}`, {
           signal: ac.signal,
           cache: 'no-store',
         })
@@ -61,7 +114,31 @@ export function useMinerPoll(hotkey: string): PollState {
           }
           throw new Error(detail)
         }
-        const json = (await r.json()) as MinerResponse
+        const json = makeVerdictData((await r.json()) as VerdictResponse)
+        const ladderEnvironments: Record<number, Env> = {}
+        const windows = json.verdicts?.submissions
+          ?.map((submission) => submission.window_n)
+          .filter((window, index, all) => Number.isFinite(window) && all.indexOf(window) === index)
+          ?? []
+        await Promise.all(
+          windows.map(async (window) => {
+            try {
+              const ladderResponse = await fetch(`/api/ladder/${window}`, {
+                signal: ac.signal,
+                cache: 'no-store',
+              })
+              if (ladderResponse.ok) {
+                ladderEnvironments[window] = ladderEnv(
+                  (await ladderResponse.json()) as LadderResponse,
+                  hotkey,
+                )
+              }
+            } catch {
+              // Verdict data remains usable if ladder lookup fails.
+            }
+          }),
+        )
+        json.ladderEnvironments = ladderEnvironments
         if (cancelled) return
         setData(json)
         setError(null)

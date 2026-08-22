@@ -8,7 +8,6 @@ import StatsTable from './StatsTable'
 
 const SS58_REGEX = /^5[A-HJ-NP-Za-km-z1-9]{47}$/
 const STORAGE_KEY = 'reliquary-dashboard-hotkeys'
-const AUTOPULL_KEY = 'reliquary-dashboard-autopull-top'
 
 interface Props {
   // Hotkeys parsed from the URL query string. Wins over localStorage when
@@ -30,17 +29,8 @@ export default function MultiMinerDashboard({ urlHotkeys, fallbackHotkey }: Prop
   )
   const [snapshots, setSnapshots] = useState<Record<string, HotkeySnapshot>>({})
   const [hydrated, setHydrated] = useState(false)
-  // When off, the dashboard stops pulling /api/top-hotkeys (no auto-add of the
-  // current top miners). Defaults on; persisted across reloads.
-  const [autoPullTop, setAutoPullTop] = useState(true)
 
   useEffect(() => {
-    try {
-      const t = localStorage.getItem(AUTOPULL_KEY)
-      if (t !== null) setAutoPullTop(t === '1')
-    } catch {
-      // ignore
-    }
     if (urlHotkeys.length > 0) {
       setHydrated(true)
       return
@@ -72,15 +62,6 @@ export default function MultiMinerDashboard({ urlHotkeys, fallbackHotkey }: Prop
     }
   }, [hotkeys, hydrated])
 
-  useEffect(() => {
-    if (!hydrated) return
-    try {
-      localStorage.setItem(AUTOPULL_KEY, autoPullTop ? '1' : '0')
-    } catch {
-      // ignore
-    }
-  }, [autoPullTop, hydrated])
-
   const addHotkey = useCallback((hk: string): boolean => {
     const trimmed = hk.trim()
     if (!SS58_REGEX.test(trimmed)) return false
@@ -107,45 +88,11 @@ export default function MultiMinerDashboard({ urlHotkeys, fallbackHotkey }: Prop
     setSnapshots((prev) => ({ ...prev, [hk]: snap }))
   }, [])
 
-  // Auto-add the current top 3 hotkeys (by accepted sample count over the last
-  // 5 windows): once the stored list has hydrated, then refreshed every 10
-  // minutes so newly-rising miners get pulled in. addHotkey() dedupes, so any
-  // hotkey already shown is skipped — no duplication. Gated by autoPullTop: when
-  // off, the effect doesn't run, so no /api/top-hotkeys requests are made.
-  useEffect(() => {
-    if (!hydrated || !autoPullTop) return
-    const REFRESH_MS = 10 * 60 * 1000 // 10 minutes
-    let cancelled = false
-
-    const fetchTopHotkeys = () => {
-      fetch('/api/top-hotkeys', { cache: 'no-store' })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((j: { top?: Array<{ hotkey: string }> } | null) => {
-          if (cancelled || !Array.isArray(j?.top)) return
-          for (const t of j!.top) {
-            if (typeof t?.hotkey === 'string') addHotkey(t.hotkey)
-          }
-        })
-        .catch(() => {
-          // top-hotkeys unavailable (e.g. upstream challenge) — non-fatal
-        })
-    }
-
-    fetchTopHotkeys() // immediately on load
-    const timer = setInterval(fetchTopHotkeys, REFRESH_MS)
-    return () => {
-      cancelled = true
-      clearInterval(timer)
-    }
-  }, [hydrated, autoPullTop, addHotkey])
-
   return (
     <>
       <HotkeyManager
         hotkeys={hotkeys}
         onAdd={addHotkey}
-        autoPullTop={autoPullTop}
-        onAutoPullChange={setAutoPullTop}
       />
       {hotkeys.map((hk) => (
         <HotkeyController key={hk} hotkey={hk} onSnapshot={updateSnapshot} />

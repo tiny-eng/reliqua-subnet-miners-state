@@ -4,6 +4,7 @@ import WindowDot from './WindowDot'
 
 const LABEL_BY_BUCKET: Record<WindowStatus['bucket'], string> = {
   accepted: 'accepted',
+  pooled: 'accepted into pool',
   soft: 'soft-failed',
   hard: 'hard-failed',
   blank: 'no submission',
@@ -36,6 +37,7 @@ export default function WindowColumn({ status }: { status: WindowStatus }) {
     env,
     window,
     submitted,
+    poolAccepted,
     accepted,
     soft,
     hard,
@@ -53,7 +55,7 @@ export default function WindowColumn({ status }: { status: WindowStatus }) {
     envLabel ? `env: ${envLabel}` : null,
     submitted === 0
       ? null
-      : `submitted ${submitted} / acc ${accepted} / soft ${soft} / hard ${hard}`,
+      : `submitted ${submitted} / exact ${accepted} / pool ${poolAccepted} / soft ${soft} / hard ${hard}`,
     totalRejects > 0
       ? `rejects ${totalRejects}: ${batchFilled} batch-filled (brown), ${otherRejects} other (red)`
       : null,
@@ -65,7 +67,7 @@ export default function WindowColumn({ status }: { status: WindowStatus }) {
   const aria =
     submitted === 0 && totalRejects === 0
       ? `Window ${window}: no submission`
-      : `Window ${window}: ${accepted} accepted, ${soft} soft-failed, ${hard} hard-failed, ${totalRejects} rejected of ${submitted} submitted`
+      : `Window ${window}: ${accepted} exact accepted, ${poolAccepted} accepted into pool, ${soft} soft-failed, ${hard} hard-failed, ${totalRejects} rejected of ${submitted} submitted`
   const visibleSlots = slots.slice(0, MAX_SLOTS_PER_WINDOW)
   const rejectKinds = [
     ...Array<string>(batchFilled).fill('batch_filled'),
