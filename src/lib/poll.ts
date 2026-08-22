@@ -72,15 +72,16 @@ function ladderEnv(response: LadderResponse, hotkey: string): Env {
   return 'unknown'
 }
 
-// Polls /api/verdicts/<hotkey> on a 30s ± 8s schedule. Aborts on unmount and on
-// hotkey change. Exponential backoff (capped at 8x) on persistent upstream
-// failure, reset on success.
+// Polls the miner and verdict APIs on a 30s ± 8s schedule. Ladder responses
+// are cached by window, so only windows first seen in a verdict response are
+// fetched. Aborts on unmount and on hotkey change.
 export function useMinerPoll(hotkey: string): PollState {
   const [data, setData] = useState<MinerResponse | null>(null)
   const [error, setError] = useState<Error | null>(null)
   const [lastFetchedAt, setLastFetchedAt] = useState<number>(0)
   const [inFlight, setInFlight] = useState<boolean>(false)
   const backoffRef = useRef(1)
+  const ladderCacheRef = useRef<Map<number, Env>>(new Map())
 
   useEffect(() => {
     if (!hotkey) return
@@ -92,21 +93,26 @@ export function useMinerPoll(hotkey: string): PollState {
     setError(null)
     setLastFetchedAt(0)
     backoffRef.current = 1
+    ladderCacheRef.current = new Map()
 
     const tick = async () => {
       if (cancelled) return
       setInFlight(true)
       try {
-        const r = await fetch(`/api/verdicts/${encodeURIComponent(hotkey)}`, {
-          signal: ac.signal,
-          cache: 'no-store',
-        })
-        if (!r.ok) {
-          // Try to read a structured error body so we can surface specific
-          // upstream conditions (e.g. Vercel challenge) instead of "HTTP 503".
-          let detail = `HTTP ${r.status}`
+        const [minerResponse, verdictResponse] = await Promise.all([
+          fetch(`/api/miner/${encodeURIComponent(hotkey)}`, {
+            signal: ac.signal,
+            cache: 'no-store',
+          }),
+          fetch(`/api/verdicts/${encodeURIComponent(hotkey)}`, {
+            signal: ac.signal,
+            cache: 'no-store',
+          }),
+        ])
+        if (!verdictResponse.ok) {
+          let detail = `HTTP ${verdictResponse.status}`
           try {
-            const errJson = (await r.json()) as { error?: string; message?: string }
+            const errJson = (await verdictResponse.json()) as { error?: string; message?: string }
             if (errJson?.message) detail = errJson.message
             else if (errJson?.error) detail = errJson.error
           } catch {
@@ -114,33 +120,42 @@ export function useMinerPoll(hotkey: string): PollState {
           }
           throw new Error(detail)
         }
-        const json = makeVerdictData((await r.json()) as VerdictResponse)
-        const ladderEnvironments: Record<number, Env> = {}
+        const minerJson = minerResponse.ok
+          ? (await minerResponse.json()) as MinerResponse
+          : null
+        const json = makeVerdictData((await verdictResponse.json()) as VerdictResponse)
+        const combined: MinerResponse = {
+          ...json,
+          ...minerJson,
+          window_detail: json.window_detail,
+          verdicts: json.verdicts,
+        }
         const windows = json.verdicts?.submissions
           ?.map((submission) => submission.window_n)
           .filter((window, index, all) => Number.isFinite(window) && all.indexOf(window) === index)
           ?? []
         await Promise.all(
           windows.map(async (window) => {
+            if (ladderCacheRef.current.has(window)) return
             try {
               const ladderResponse = await fetch(`/api/ladder/${window}`, {
                 signal: ac.signal,
                 cache: 'no-store',
               })
               if (ladderResponse.ok) {
-                ladderEnvironments[window] = ladderEnv(
+                ladderCacheRef.current.set(window, ladderEnv(
                   (await ladderResponse.json()) as LadderResponse,
                   hotkey,
-                )
+                ))
               }
             } catch {
               // Verdict data remains usable if ladder lookup fails.
             }
           }),
         )
-        json.ladderEnvironments = ladderEnvironments
+        combined.ladderEnvironments = Object.fromEntries(ladderCacheRef.current)
         if (cancelled) return
-        setData(json)
+        setData(combined)
         setError(null)
         setLastFetchedAt(Date.now())
         backoffRef.current = 1
