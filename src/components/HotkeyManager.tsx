@@ -7,16 +7,9 @@ const SS58_REGEX = /^5[A-HJ-NP-Za-km-z1-9]{47}$/
 interface Props {
   hotkeys: string[]
   onAdd: (hk: string) => boolean
-  autoPullTop: boolean
-  onAutoPullChange: (v: boolean) => void
 }
 
-export default function HotkeyManager({
-  hotkeys,
-  onAdd,
-  autoPullTop,
-  onAutoPullChange,
-}: Props) {
+export default function HotkeyManager({ hotkeys, onAdd }: Props) {
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -67,19 +60,6 @@ export default function HotkeyManager({
           {error}
         </div>
       ) : null}
-      <label className="toggle-row">
-        <input
-          type="checkbox"
-          checked={autoPullTop}
-          onChange={(e) => onAutoPullChange(e.target.checked)}
-        />
-        <span>Auto-pull top miners</span>
-        <span className="toggle-hint muted">
-          {autoPullTop
-            ? 'on — adds the current top 3 every 10 min'
-            : 'off — top-miner data is not pulled'}
-        </span>
-      </label>
       <div className="hotkey-meta muted">
         {hotkeys.length} hotkey{hotkeys.length === 1 ? '' : 's'} monitored
         {hotkeys.length > 0 ? ' . polling each every ~30s' : ''}

@@ -1,7 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type { MinerResponse } from './types'
+import type {
+  Env,
+  LadderResponse,
+  MinerResponse,
+  SubmissionVerdict,
+  VerdictResponse,
+  WindowDetail,
+} from './types'
 
 // Subnet windows are ~60s (WINDOW_LENGTH 5 x 12s), so polling much faster than
 // that just re-fetches identical data and hammers reliqua.ai's WAF into Attack
@@ -19,15 +26,62 @@ export interface PollState {
   inFlight: boolean
 }
 
-// Polls /api/miner/<hotkey> on a 7s ± 1.5s schedule. Aborts on unmount and on
-// hotkey change. Exponential backoff (capped at 8x = ~56s base) on persistent
-// upstream failure, reset on success.
+function dedupeSubmissions(response: VerdictResponse): SubmissionVerdict[] {
+  const source = Array.isArray(response.submissions)
+    ? response.submissions
+    : Array.isArray(response.verdicts)
+      ? response.verdicts
+      : []
+  const unique = new Map<string, SubmissionVerdict>()
+  for (const submission of source) {
+    if (typeof submission?.merkle_root === 'string') unique.set(submission.merkle_root, submission)
+  }
+  return [...unique.values()]
+}
+
+function makeVerdictData(response: VerdictResponse): MinerResponse {
+  const submissions = dedupeSubmissions(response)
+  const windows = [...new Set(submissions.map((submission) => submission.window_n))]
+    .filter((window) => Number.isFinite(window))
+    .sort((a, b) => a - b)
+  const windowDetail: WindowDetail[] = windows.map((window) => ({
+    window,
+    created_at: null,
+    score: 0,
+    submitted: submissions.filter((submission) => submission.window_n === window).length,
+    accepted: 0,
+    soft_failed: 0,
+    hard_failed: 0,
+    response_time_ms: null,
+  }))
+  return {
+    source: 'verdicts',
+    current_window: { window: windows.length ? Math.max(...windows) : undefined },
+    window_detail: windowDetail,
+    verdicts: { ...response, submissions },
+  }
+}
+
+function ladderEnv(response: LadderResponse, hotkey: string): Env {
+  for (const environment of response.environments ?? []) {
+    if (environment.rows?.some((row) => row.hotkey === hotkey)) {
+      if (environment.env_name === 'openmathinstruct') return 'openmath'
+      if (environment.env_name === 'opencodeinstruct') return 'opencode'
+    }
+  }
+  return 'unknown'
+}
+
+// Polls the miner and verdict APIs on a 30s ± 8s schedule. Ladder responses
+// are cached by window, so only windows first seen in a verdict response are
+// fetched. Aborts on unmount and on hotkey change.
 export function useMinerPoll(hotkey: string): PollState {
   const [data, setData] = useState<MinerResponse | null>(null)
   const [error, setError] = useState<Error | null>(null)
   const [lastFetchedAt, setLastFetchedAt] = useState<number>(0)
   const [inFlight, setInFlight] = useState<boolean>(false)
   const backoffRef = useRef(1)
+  const ladderCacheRef = useRef<Map<number, Env>>(new Map())
 
   useEffect(() => {
     if (!hotkey) return
@@ -39,21 +93,26 @@ export function useMinerPoll(hotkey: string): PollState {
     setError(null)
     setLastFetchedAt(0)
     backoffRef.current = 1
+    ladderCacheRef.current = new Map()
 
     const tick = async () => {
       if (cancelled) return
       setInFlight(true)
       try {
-        const r = await fetch(`/api/miner/${encodeURIComponent(hotkey)}`, {
-          signal: ac.signal,
-          cache: 'no-store',
-        })
-        if (!r.ok) {
-          // Try to read a structured error body so we can surface specific
-          // upstream conditions (e.g. Vercel challenge) instead of "HTTP 503".
-          let detail = `HTTP ${r.status}`
+        const [minerResponse, verdictResponse] = await Promise.all([
+          fetch(`/api/miner/${encodeURIComponent(hotkey)}`, {
+            signal: ac.signal,
+            cache: 'no-store',
+          }),
+          fetch(`/api/verdicts/${encodeURIComponent(hotkey)}`, {
+            signal: ac.signal,
+            cache: 'no-store',
+          }),
+        ])
+        if (!verdictResponse.ok) {
+          let detail = `HTTP ${verdictResponse.status}`
           try {
-            const errJson = (await r.json()) as { error?: string; message?: string }
+            const errJson = (await verdictResponse.json()) as { error?: string; message?: string }
             if (errJson?.message) detail = errJson.message
             else if (errJson?.error) detail = errJson.error
           } catch {
@@ -61,9 +120,42 @@ export function useMinerPoll(hotkey: string): PollState {
           }
           throw new Error(detail)
         }
-        const json = (await r.json()) as MinerResponse
+        const minerJson = minerResponse.ok
+          ? (await minerResponse.json()) as MinerResponse
+          : null
+        const json = makeVerdictData((await verdictResponse.json()) as VerdictResponse)
+        const combined: MinerResponse = {
+          ...json,
+          ...minerJson,
+          window_detail: json.window_detail,
+          verdicts: json.verdicts,
+        }
+        const windows = json.verdicts?.submissions
+          ?.map((submission) => submission.window_n)
+          .filter((window, index, all) => Number.isFinite(window) && all.indexOf(window) === index)
+          ?? []
+        await Promise.all(
+          windows.map(async (window) => {
+            if (ladderCacheRef.current.has(window)) return
+            try {
+              const ladderResponse = await fetch(`/api/ladder/${window}`, {
+                signal: ac.signal,
+                cache: 'no-store',
+              })
+              if (ladderResponse.ok) {
+                ladderCacheRef.current.set(window, ladderEnv(
+                  (await ladderResponse.json()) as LadderResponse,
+                  hotkey,
+                ))
+              }
+            } catch {
+              // Verdict data remains usable if ladder lookup fails.
+            }
+          }),
+        )
+        combined.ladderEnvironments = Object.fromEntries(ladderCacheRef.current)
         if (cancelled) return
-        setData(json)
+        setData(combined)
         setError(null)
         setLastFetchedAt(Date.now())
         backoffRef.current = 1

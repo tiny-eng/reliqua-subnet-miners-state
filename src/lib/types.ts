@@ -1,4 +1,4 @@
-export type Bucket = 'accepted' | 'soft' | 'hard' | 'blank'
+export type Bucket = 'accepted' | 'pooled' | 'soft' | 'hard' | 'blank'
 
 // Which evaluation environment a window ran. Each window runs exactly one
 // environment (one validator, one task_source), so this is per-window, not
@@ -84,6 +84,42 @@ export interface CurrentWindow {
   validator_hotkey?: string
 }
 
+export interface SubmissionVerdict {
+  merkle_root: string
+  window_n: number
+  accepted: boolean
+  reason: string
+  ts: number
+  accepted_into_pool?: boolean | null
+  selected_for_batch?: boolean | null
+  rewarded?: boolean | null
+  sigma?: number | null
+  status?: string
+}
+
+export interface VerdictResponse {
+  verdicts?: SubmissionVerdict[]
+  submissions?: SubmissionVerdict[]
+  event_count?: number
+  submission_count?: number
+}
+
+export interface LadderRow {
+  hotkey: string
+  selected?: boolean
+  status?: string
+}
+
+export interface LadderEnvironment {
+  env_name: string
+  rows?: LadderRow[]
+}
+
+export interface LadderResponse {
+  window?: number
+  environments?: LadderEnvironment[]
+}
+
 export interface MinerResponse {
   source?: string
   generated_at?: string
@@ -92,6 +128,8 @@ export interface MinerResponse {
   history?: Array<{ window: number; score: number }>
   current_window?: CurrentWindow
   window_detail?: WindowDetail[]
+  verdicts?: VerdictResponse
+  ladderEnvironments?: Record<number, Env>
 }
 
 export interface WindowStatus {
@@ -102,6 +140,8 @@ export interface WindowStatus {
   // green for opencode, blue for openmath. See classify.ts:detectEnv.
   env: Env
   submitted: number
+  // Total accepted into the pool, including exact selected submissions.
+  poolAccepted: number
   accepted: number
   soft: number
   hard: number

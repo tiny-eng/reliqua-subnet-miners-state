@@ -1,4 +1,5 @@
-import type { Bucket, Env, WindowDetail, WindowStatus } from './types'
+import { reasonSeverity } from './reasons'
+import type { Bucket, Env, SubmissionVerdict, WindowDetail, WindowStatus } from './types'
 
 // Protocol cap from reliquary docs: MAX_SUBMISSIONS_PER_HOTKEY_PER_WINDOW = 8.
 export const MAX_SLOTS_PER_WINDOW = 8
@@ -80,6 +81,7 @@ function buildSlots(accepted: number, soft: number, hard: number): Bucket[] {
 // Rejects participate so a reject-only window isn't styled 'blank'.
 function summaryBucket(
   accepted: number,
+  pooled: number,
   soft: number,
   hard: number,
   submitted: number,
@@ -88,6 +90,7 @@ function summaryBucket(
 ): Bucket {
   if (submitted === 0 && accepted + soft + hard + batchFilled + otherRejects === 0) return 'blank'
   if (accepted > 0) return 'accepted'
+  if (pooled > 0) return 'pooled'
   if (hard > 0 || otherRejects > 0) return 'hard'
   if (soft > 0 || batchFilled > 0) return 'soft'
   return 'blank'
@@ -97,7 +100,7 @@ export function classifyWindow(r: WindowDetail): WindowStatus {
   const { accepted, soft, hard, submitted } = bucketCounts(r)
   const { batchFilled, otherRejects } = rejectCounts(r)
   const slots = buildSlots(accepted, soft, hard)
-  const bucket = summaryBucket(accepted, soft, hard, submitted, batchFilled, otherRejects)
+  const bucket = summaryBucket(accepted, 0, soft, hard, submitted, batchFilled, otherRejects)
 
   let topReason: string | null = null
   if (r.miner_reject_reasons) {
@@ -113,6 +116,7 @@ export function classifyWindow(r: WindowDetail): WindowStatus {
     bucket,
     env: detectEnv(r),
     submitted,
+    poolAccepted: accepted,
     accepted,
     soft,
     hard,
@@ -120,6 +124,66 @@ export function classifyWindow(r: WindowDetail): WindowStatus {
     topReason,
     createdAt: r.created_at ?? null,
     slots,
+    batchFilled,
+    otherRejects,
+  }
+}
+
+export function classifyVerdictWindow(
+  window: number,
+  submissions: SubmissionVerdict[],
+  fallback?: WindowStatus,
+): WindowStatus {
+  const inWindow = submissions.filter((s) => s.window_n === window)
+  if (inWindow.length === 0 && fallback) return fallback
+
+  let accepted = 0
+  let poolAccepted = 0
+  let soft = 0
+  let hard = 0
+  let batchFilled = 0
+  let topReason: string | null = null
+  for (const submission of inWindow) {
+    if (submission.accepted) {
+      poolAccepted++
+      if (submission.selected_for_batch === true) accepted++
+      continue
+    }
+    if (submission.reason.toUpperCase() === 'BATCH_FILLED') batchFilled++
+    else if (reasonSeverity(submission.reason) === 'soft') soft++
+    else hard++
+    topReason = submission.reason
+  }
+
+  const submitted = inWindow.length
+  const otherRejects = soft + hard
+  const slots: Bucket[] = []
+  for (let i = 0; i < accepted; i++) slots.push('accepted')
+  for (let i = accepted; i < poolAccepted; i++) slots.push('pooled')
+  for (let i = 0; i < soft; i++) slots.push('soft')
+  for (let i = 0; i < hard; i++) slots.push('hard')
+
+  return {
+    window,
+    bucket: summaryBucket(
+      accepted,
+      poolAccepted - accepted,
+      soft,
+      hard,
+      submitted,
+      batchFilled,
+      otherRejects,
+    ),
+    env: fallback?.env ?? 'unknown',
+    submitted,
+    poolAccepted,
+    accepted,
+    soft,
+    hard,
+    score: fallback?.score ?? 0,
+    topReason,
+    createdAt: fallback?.createdAt ?? null,
+    slots: slots.slice(0, MAX_SLOTS_PER_WINDOW),
     batchFilled,
     otherRejects,
   }

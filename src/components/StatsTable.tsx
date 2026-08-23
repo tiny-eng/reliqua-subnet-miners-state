@@ -38,7 +38,7 @@ function fmtRelative(target: number): string {
 }
 
 function countSlots(snap: HotkeySnapshot | undefined): Record<Bucket, number> {
-  const out: Record<Bucket, number> = { accepted: 0, soft: 0, hard: 0, blank: 0 }
+  const out: Record<Bucket, number> = { accepted: 0, pooled: 0, soft: 0, hard: 0, blank: 0 }
   if (!snap) return out
   for (const w of snap.strip) {
     for (const s of w.slots) out[s]++

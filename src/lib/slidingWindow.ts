@@ -1,5 +1,5 @@
-import { classifyWindow } from './classify'
-import type { WindowDetail, WindowStatus } from './types'
+import { classifyVerdictWindow, classifyWindow } from './classify'
+import type { Env, SubmissionVerdict, WindowDetail, WindowStatus } from './types'
 
 export const WINDOW_CAPACITY = 72
 
@@ -15,12 +15,19 @@ export function mergeWindows(
   prev: Map<number, WindowStatus>,
   incoming: WindowDetail[],
   currentWindow?: number | null,
+  verdicts?: SubmissionVerdict[],
+  ladderEnvironments?: Record<number, Env>,
 ): { merged: Map<number, WindowStatus>; latestWindow: number } {
   const next = new Map(prev)
 
   for (const rec of incoming) {
     if (typeof rec?.window !== 'number') continue
-    next.set(rec.window, classifyWindow(rec))
+    const fallback = classifyWindow(rec)
+    const classified = verdicts
+      ? classifyVerdictWindow(rec.window, verdicts, fallback)
+      : fallback
+    if (ladderEnvironments?.[rec.window]) classified.env = ladderEnvironments[rec.window]
+    next.set(rec.window, classified)
   }
 
   let incomingMax = -Infinity
@@ -69,6 +76,7 @@ function emptySlot(window: number): WindowStatus {
     bucket: 'blank',
     env: 'unknown',
     submitted: 0,
+    poolAccepted: 0,
     accepted: 0,
     soft: 0,
     hard: 0,

@@ -29,7 +29,13 @@ export default function MinerPanel({ hotkey, onRemove }: Props) {
   useEffect(() => {
     if (!data) return
     const incoming = data.window_detail ?? []
-    const { merged, latestWindow: lw } = mergeWindows(mapRef.current, incoming)
+    const { merged, latestWindow: lw } = mergeWindows(
+      mapRef.current,
+      incoming,
+      data.current_window?.window ?? null,
+      data.verdicts?.submissions,
+      data.ladderEnvironments,
+    )
     mapRef.current = merged
     setLatestWindow(lw)
     setVersion((v) => v + 1)
