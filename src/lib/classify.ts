@@ -121,6 +121,9 @@ export function classifyWindow(r: WindowDetail): WindowStatus {
     soft,
     hard,
     score: r.score ?? 0,
+    avgSelectedSigma: null,
+    selectedSigmaSum: 0,
+    selectedSigmaCount: 0,
     topReason,
     createdAt: r.created_at ?? null,
     slots,
@@ -143,10 +146,16 @@ export function classifyVerdictWindow(
   let hard = 0
   let batchFilled = 0
   let topReason: string | null = null
+  const selectedSigmas: number[] = []
   for (const submission of inWindow) {
     if (submission.accepted) {
       poolAccepted++
-      if (submission.selected_for_batch === true) accepted++
+      if (submission.selected_for_batch === true) {
+        accepted++
+        if (typeof submission.sigma === 'number' && Number.isFinite(submission.sigma)) {
+          selectedSigmas.push(submission.sigma)
+        }
+      }
       continue
     }
     if (submission.reason.toUpperCase() === 'BATCH_FILLED') batchFilled++
@@ -181,6 +190,11 @@ export function classifyVerdictWindow(
     soft,
     hard,
     score: fallback?.score ?? 0,
+    avgSelectedSigma: selectedSigmas.length
+      ? selectedSigmas.reduce((sum, sigma) => sum + sigma, 0) / selectedSigmas.length
+      : null,
+    selectedSigmaSum: selectedSigmas.reduce((sum, sigma) => sum + sigma, 0),
+    selectedSigmaCount: selectedSigmas.length,
     topReason,
     createdAt: fallback?.createdAt ?? null,
     slots: slots.slice(0, MAX_SLOTS_PER_WINDOW),
