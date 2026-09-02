@@ -146,6 +146,9 @@ export interface WindowStatus {
   soft: number
   hard: number
   score: number
+  avgSelectedSigma: number | null
+  selectedSigmaSum: number
+  selectedSigmaCount: number
   topReason: string | null
   createdAt: string | null
   // Per-submission buckets for this window, ordered bottom-up: accepted first,

@@ -7,15 +7,15 @@
   --accent: #58a6ff;
 
   --accepted: #13f5f5;
-  --pooled: #697485;
+  --pooled: #440d12;
   --soft: #8b5a2b;
-  --hard: #a3303c;
+  --hard: #832932;
   --blank: #21262d;
 
   /* Accepted dots are colored by evaluation environment:
      opencode = green (same as the generic accepted green), openmath = blue. */
-  --opencode: #039c36;
-  --openmath: #1575fc;
+  --opencode: #02b83f;
+  --openmath: #2073f0;
 }
 
 * {

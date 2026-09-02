@@ -42,6 +42,7 @@ export default function WindowColumn({ status }: { status: WindowStatus }) {
     soft,
     hard,
     score,
+    avgSelectedSigma,
     topReason,
     createdAt,
     slots,
@@ -59,6 +60,7 @@ export default function WindowColumn({ status }: { status: WindowStatus }) {
     totalRejects > 0
       ? `rejects ${totalRejects}: ${batchFilled} batch-filled (brown), ${otherRejects} other (red)`
       : null,
+    avgSelectedSigma == null ? null : `avg selected sigma ${avgSelectedSigma.toFixed(3)}`,
     submitted === 0 ? null : `score ${score.toFixed(3)}`,
     topReason ? `top reason: ${topReason}` : null,
     createdAt ? relativeTime(createdAt) : null,
@@ -67,7 +69,7 @@ export default function WindowColumn({ status }: { status: WindowStatus }) {
   const aria =
     submitted === 0 && totalRejects === 0
       ? `Window ${window}: no submission`
-      : `Window ${window}: ${accepted} exact accepted, ${poolAccepted} accepted into pool, ${soft} soft-failed, ${hard} hard-failed, ${totalRejects} rejected of ${submitted} submitted`
+      : `Window ${window}: ${accepted} exact accepted, ${poolAccepted} accepted into pool, ${soft} soft-failed, ${hard} hard-failed, ${totalRejects} rejected of ${submitted} submitted${avgSelectedSigma == null ? '' : `, average selected sigma ${avgSelectedSigma.toFixed(3)}`}`
   const visibleSlots = slots.slice(0, MAX_SLOTS_PER_WINDOW)
   const rejectKinds = [
     ...Array<string>(batchFilled).fill('batch_filled'),
