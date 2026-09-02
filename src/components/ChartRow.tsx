@@ -44,7 +44,7 @@ export default function ChartRow({
   const activeWindowCount = strip.filter((window) => window.submitted > 0).length
   const selectedSubmissionSum = strip.reduce((sum, window) => sum + window.accepted, 0)
   const averageSelectedSubmissions =
-    activeWindowCount > 0 ? selectedSubmissionSum / activeWindowCount : null
+    activeWindowCount > 0 ? selectedSubmissionSum / 72 : null
   return (
     <div className="chart-row">
       <div className="chart-row-header">
@@ -58,7 +58,7 @@ export default function ChartRow({
           {latestWindow > 0 ? `w${latestWindow}` : 'no data yet'}
         </span>
         <span className="muted chart-row-value mono">
-          selected submissions: {selectedSubmissionSum} / active windows: {activeWindowCount} / avg:{' '}
+          selected submissions: {selectedSubmissionSum} / active windows: {activeWindowCount} / avg(submissions / 72):{' '}
           {averageSelectedSubmissions == null ? 'n/a' : averageSelectedSubmissions.toFixed(2)}
         </span>
         <span className="live-indicator">
