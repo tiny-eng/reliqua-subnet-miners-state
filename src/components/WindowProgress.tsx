@@ -99,7 +99,7 @@ export default function WindowProgress() {
           </div>
         </div>
         <div className="window-progress-summary">
-          <span>{data?.valid_submissions ?? 0} valid submissions</span>
+          <span>Math: {data?.valid_submissions ?? 0} valid submissions</span>
           <span>{formatSeconds(Math.max(0, duration - elapsed))} remaining</span>
         </div>
       </div>
