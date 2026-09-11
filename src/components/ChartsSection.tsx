@@ -19,7 +19,7 @@ export default function ChartsSection({ hotkeys, snapshots }: Props) {
   return (
     <section className="charts-section">
       <div className="section-header">
-        <h2>Last 72 windows &middot; per-submission dots</h2>
+        <h2>Last 72 windows &middot; per-submission state</h2>
         <div className="legend" aria-hidden="true">
           <span className="legend-item">
             <span className="swatch" style={{ background: 'var(--opencode)' }} />
@@ -34,20 +34,15 @@ export default function ChartsSection({ hotkeys, snapshots }: Props) {
             pooled
           </span>
           <span className="legend-item">
-            <span className="swatch" style={{ background: 'var(--soft)' }} />
+            <span className="failure-dot" data-kind="soft" />
             soft-failed
           </span>
           <span className="legend-item">
-            <span className="swatch" style={{ background: 'var(--hard)' }} />
+            <span className="failure-dot" data-kind="hard" />
             hard-failed
           </span>
-          <span className="legend-item muted">no submission</span>
           <span className="legend-item">
-            <span className="reject-dot" data-kind="batch_filled" />
-            batch-filled reject
-          </span>
-          <span className="legend-item">
-            <span className="reject-dot" data-kind="other" />
+            <span className="failure-dot" data-kind="other" />
             other reject
           </span>
         </div>

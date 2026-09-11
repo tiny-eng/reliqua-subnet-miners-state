@@ -3,7 +3,7 @@ import {
   CHALLENGE_MESSAGE,
   fetchUpstreamText,
   isVercelChallenge,
-  upstreamBase,
+  verdictsBase,
 } from '@/lib/upstream'
 
 export const runtime = 'nodejs'
@@ -25,7 +25,7 @@ export async function GET(
   }
 
   try {
-    const response = await fetchUpstreamText(`/api/verdicts/${hotkey}`)
+    const response = await fetchUpstreamText(`${verdictsBase()}/${hotkey}`)
     if (isVercelChallenge(response)) {
       return NextResponse.json(
         { error: 'upstream_challenge', message: CHALLENGE_MESSAGE, upstreamStatus: 403 },
@@ -45,7 +45,7 @@ export async function GET(
       {
         error: 'upstream_failed',
         message: err.message,
-        url: `${upstreamBase()}/api/verdicts/${hotkey}`,
+        url: `${verdictsBase()}/${hotkey}`,
       },
       { status: 502, headers: { 'Cache-Control': 'no-store' } },
     )

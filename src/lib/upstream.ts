@@ -25,6 +25,14 @@ export function upstreamBase(): string {
   return (process.env.RELIQUA_BASE_URL ?? 'https://www.reliqua.ai').replace(/\/$/, '')
 }
 
+export function verdictsBase(): string {
+  return (process.env.RELIQUA_VERDICTS_URL ?? `${upstreamBase()}/api/verdicts`).replace(/\/$/, '')
+}
+
+export function stateUrl(): string {
+  return process.env.RELIQUA_STATE_URL ?? 'http://62.238.81.36:8000/state'
+}
+
 export function buildUpstreamHeaders(): Record<string, string> {
   const headers: Record<string, string> = { ...BROWSER_HEADERS }
   const base = upstreamBase()

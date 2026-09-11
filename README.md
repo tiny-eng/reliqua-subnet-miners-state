@@ -35,6 +35,7 @@ Or set the default in `.env.local` (copy `.env.local.example`):
 ```
 NEXT_PUBLIC_DEFAULT_HOTKEY=5HGr6joke42gGZxMHsDTuJEepnmbaihM7KdUwVtq2kA6TNAN
 RELIQUA_BASE_URL=https://www.reliqua.ai
+RELIQUA_VERDICTS_URL=http://62.238.81.36:8000/verdicts/
 ```
 
 ## Design notes

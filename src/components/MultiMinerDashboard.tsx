@@ -5,6 +5,7 @@ import ChartsSection from './ChartsSection'
 import HotkeyController, { type HotkeySnapshot } from './HotkeyController'
 import HotkeyManager from './HotkeyManager'
 import StatsTable from './StatsTable'
+import WindowProgress from './WindowProgress'
 
 const SS58_REGEX = /^5[A-HJ-NP-Za-km-z1-9]{47}$/
 const STORAGE_KEY = 'reliquary-dashboard-hotkeys'
@@ -90,6 +91,7 @@ export default function MultiMinerDashboard({ urlHotkeys, fallbackHotkey }: Prop
 
   return (
     <>
+      <WindowProgress />
       <HotkeyManager
         hotkeys={hotkeys}
         onAdd={addHotkey}

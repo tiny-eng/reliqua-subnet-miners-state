@@ -110,9 +110,17 @@ export interface LadderRow {
   status?: string
 }
 
+export interface LadderRejected {
+  hotkey: string
+  sampled_attempts?: number
+  top_reason?: string
+  reasons?: Record<string, number>
+}
+
 export interface LadderEnvironment {
   env_name: string
   rows?: LadderRow[]
+  rejected?: LadderRejected[]
 }
 
 export interface LadderResponse {

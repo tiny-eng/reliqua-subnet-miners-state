@@ -64,7 +64,9 @@ function makeVerdictData(response: VerdictResponse): MinerResponse {
 
 function ladderEnv(response: LadderResponse, hotkey: string): Env {
   for (const environment of response.environments ?? []) {
-    if (environment.rows?.some((row) => row.hotkey === hotkey)) {
+    const isInRows = environment.rows?.some((row) => row.hotkey === hotkey)
+    const isRejected = environment.rejected?.some((entry) => entry.hotkey === hotkey)
+    if (isInRows || isRejected) {
       if (environment.env_name === 'openmathinstruct') return 'openmath'
       if (environment.env_name === 'opencodeinstruct') return 'opencode'
     }

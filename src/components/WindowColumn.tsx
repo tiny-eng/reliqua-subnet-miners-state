@@ -27,10 +27,8 @@ function relativeTime(iso: string | null): string {
   return `${Math.round(ms / 86_400_000)}d ago`
 }
 
-// One window = one vertical column. Bottom-up (the column is column-reverse):
-// filled dots for each actual submission (accepted/soft/hard), then ABOVE them
-// the reject tally as bordered circles — brown for batch_filled, red for every
-// other reason — from this window's miner_reject_reasons.
+// One window = one vertical column with normal submission dots and at most one
+// marker per failure kind.
 export default function WindowColumn({ status }: { status: WindowStatus }) {
   const {
     bucket,
@@ -46,10 +44,14 @@ export default function WindowColumn({ status }: { status: WindowStatus }) {
     topReason,
     createdAt,
     slots,
-    batchFilled,
     otherRejects,
   } = status
-  const totalRejects = batchFilled + otherRejects
+  const failureKinds = [
+    hard > 0 ? 'hard' : null,
+    soft > 0 ? 'soft' : null,
+    otherRejects > 0 ? 'other' : null,
+  ].filter((kind): kind is 'hard' | 'soft' | 'other' => kind !== null)
+  const totalRejects = otherRejects
   const envLabel = LABEL_BY_ENV[env]
   const lines = [
     `window ${window} - ${LABEL_BY_BUCKET[bucket]}`,
@@ -57,8 +59,8 @@ export default function WindowColumn({ status }: { status: WindowStatus }) {
     submitted === 0
       ? null
       : `submitted ${submitted} / exact ${accepted} / pool ${poolAccepted} / soft ${soft} / hard ${hard}`,
-    totalRejects > 0
-      ? `rejects ${totalRejects}: ${batchFilled} batch-filled (brown), ${otherRejects} other (red)`
+    failureKinds.length
+      ? `failed: ${failureKinds.join(', ')} (soft ${soft}, hard ${hard}, other ${otherRejects})`
       : null,
     avgSelectedSigma == null ? null : `avg selected sigma ${avgSelectedSigma.toFixed(3)}`,
     submitted === 0 ? null : `score ${score.toFixed(3)}`,
@@ -67,14 +69,12 @@ export default function WindowColumn({ status }: { status: WindowStatus }) {
   ].filter(Boolean) as string[]
   const tooltip = lines.join('\n')
   const aria =
-    submitted === 0 && totalRejects === 0
+    submitted === 0 && failureKinds.length === 0
       ? `Window ${window}: no submission`
       : `Window ${window}: ${accepted} exact accepted, ${poolAccepted} accepted into pool, ${soft} soft-failed, ${hard} hard-failed, ${totalRejects} rejected of ${submitted} submitted${avgSelectedSigma == null ? '' : `, average selected sigma ${avgSelectedSigma.toFixed(3)}`}`
-  const visibleSlots = slots.slice(0, MAX_SLOTS_PER_WINDOW)
-  const rejectKinds = [
-    ...Array<string>(batchFilled).fill('batch_filled'),
-    ...Array<string>(otherRejects).fill('other'),
-  ].slice(0, MAX_SLOTS_PER_WINDOW)
+  const visibleSlots = slots
+    .filter((slot) => slot === 'accepted' || slot === 'pooled')
+    .slice(0, MAX_SLOTS_PER_WINDOW)
   return (
     <div
       className="window-col"
@@ -83,11 +83,11 @@ export default function WindowColumn({ status }: { status: WindowStatus }) {
       title={tooltip}
       data-bucket={bucket}
     >
-      {visibleSlots.map((b, i) => (
-        <WindowDot key={i} bucket={b} env={env} />
+      {visibleSlots.map((slot, index) => (
+        <WindowDot key={`slot-${index}`} bucket={slot} env={env} />
       ))}
-      {rejectKinds.map((kind, i) => (
-        <span key={`rej-${i}`} className="reject-dot" data-kind={kind} aria-hidden="true" />
+      {failureKinds.map((kind) => (
+        <span key={kind} className="failure-dot" data-kind={kind} aria-hidden="true" />
       ))}
     </div>
   )
