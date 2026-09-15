@@ -3,29 +3,26 @@ import {
   CHALLENGE_MESSAGE,
   fetchUpstreamText,
   isVercelChallenge,
-  verdictsBase,
+  upstreamBase,
 } from '@/lib/upstream'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const SS58_REGEX = /^5[A-HJ-NP-Za-km-z1-9]{47}$/
-
 export async function GET(
   _req: Request,
-  ctx: { params: Promise<{ hotkey: string }> },
+  ctx: { params: Promise<{ window: string }> },
 ) {
-  const { hotkey } = await ctx.params
-
-  if (!SS58_REGEX.test(hotkey)) {
+  const { window } = await ctx.params
+  if (!/^\d+$/.test(window)) {
     return NextResponse.json(
-      { error: 'invalid_hotkey', message: 'Hotkey must be a valid SS58 address.' },
+      { error: 'invalid_window', message: 'Window must be a positive integer.' },
       { status: 400, headers: { 'Cache-Control': 'no-store' } },
     )
   }
 
   try {
-    const response = await fetchUpstreamText(`${verdictsBase()}/${hotkey}`)
+    const response = await fetchUpstreamText(`/api/live/windows/${window}/accepted`)
     if (isVercelChallenge(response)) {
       return NextResponse.json(
         { error: 'upstream_challenge', message: CHALLENGE_MESSAGE, upstreamStatus: 403 },
@@ -45,7 +42,7 @@ export async function GET(
       {
         error: 'upstream_failed',
         message: err.message,
-        url: `${verdictsBase()}/${hotkey}`,
+        url: `${upstreamBase()}/api/live/windows/${window}/accepted`,
       },
       { status: 502, headers: { 'Cache-Control': 'no-store' } },
     )
