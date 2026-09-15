@@ -13,6 +13,7 @@ const LABEL_BY_BUCKET: Record<WindowStatus['bucket'], string> = {
 const LABEL_BY_ENV: Record<WindowStatus['env'], string> = {
   opencode: 'opencode',
   openmath: 'openmath',
+  logic: 'logic',
   unknown: '',
 }
 
@@ -44,6 +45,7 @@ export default function WindowColumn({ status }: { status: WindowStatus }) {
     topReason,
     createdAt,
     slots,
+    slotEnvs,
     otherRejects,
   } = status
   const failureKinds = [
@@ -84,7 +86,7 @@ export default function WindowColumn({ status }: { status: WindowStatus }) {
       data-bucket={bucket}
     >
       {visibleSlots.map((slot, index) => (
-        <WindowDot key={`slot-${index}`} bucket={slot} env={env} />
+        <WindowDot key={`slot-${index}`} bucket={slot} env={slotEnvs[index] ?? env} />
       ))}
       {failureKinds.map((kind) => (
         <span key={kind} className="failure-dot" data-kind={kind} aria-hidden="true" />

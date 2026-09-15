@@ -1,5 +1,11 @@
 import { classifyVerdictWindow, classifyWindow } from './classify'
-import type { Env, SubmissionVerdict, WindowDetail, WindowStatus } from './types'
+import type {
+  AcceptedWindowSummary,
+  Env,
+  SubmissionVerdict,
+  WindowDetail,
+  WindowStatus,
+} from './types'
 
 export const WINDOW_CAPACITY = 72
 
@@ -17,6 +23,7 @@ export function mergeWindows(
   currentWindow?: number | null,
   verdicts?: SubmissionVerdict[],
   ladderEnvironments?: Record<number, Env>,
+  acceptedWindows?: Record<number, AcceptedWindowSummary>,
 ): { merged: Map<number, WindowStatus>; latestWindow: number } {
   const next = new Map(prev)
 
@@ -26,7 +33,23 @@ export function mergeWindows(
     const classified = verdicts
       ? classifyVerdictWindow(rec.window, verdicts, fallback)
       : fallback
-    if (ladderEnvironments?.[rec.window]) classified.env = ladderEnvironments[rec.window]
+    const accepted = acceptedWindows?.[rec.window]
+    if (accepted) {
+      classified.env = accepted.environment
+      classified.accepted = accepted.selectedCount
+      classified.poolAccepted = Math.max(classified.poolAccepted, accepted.selectedCount)
+      if (accepted.selectedCount > 0) classified.bucket = 'accepted'
+      classified.slots = [
+        ...Array<"accepted">(accepted.selectedCount).fill('accepted'),
+        ...classified.slots.filter((slot) => slot !== 'accepted'),
+      ].slice(0, 8)
+      classified.slotEnvs = [
+        ...accepted.selectedEnvironments,
+        ...classified.slotEnvs.slice(accepted.selectedCount),
+      ].slice(0, 8)
+    } else if (ladderEnvironments?.[rec.window]) {
+      classified.env = ladderEnvironments[rec.window]
+    }
     next.set(rec.window, classified)
   }
 
@@ -87,6 +110,7 @@ function emptySlot(window: number): WindowStatus {
     topReason: null,
     createdAt: null,
     slots: [],
+    slotEnvs: [],
     batchFilled: 0,
     otherRejects: 0,
   }

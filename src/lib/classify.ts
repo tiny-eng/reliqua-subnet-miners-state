@@ -127,6 +127,7 @@ export function classifyWindow(r: WindowDetail): WindowStatus {
     topReason,
     createdAt: r.created_at ?? null,
     slots,
+    slotEnvs: slots.map((slot) => (slot === 'accepted' ? detectEnv(r) : 'unknown')),
     batchFilled,
     otherRejects,
   }
@@ -198,6 +199,9 @@ export function classifyVerdictWindow(
     topReason,
     createdAt: fallback?.createdAt ?? null,
     slots: slots.slice(0, MAX_SLOTS_PER_WINDOW),
+    slotEnvs: slots
+      .slice(0, MAX_SLOTS_PER_WINDOW)
+      .map((slot) => (slot === 'accepted' ? fallback?.env ?? 'unknown' : 'unknown')),
     batchFilled,
     otherRejects,
   }

@@ -4,7 +4,7 @@ export type Bucket = 'accepted' | 'pooled' | 'soft' | 'hard' | 'blank'
 // environment (one validator, one task_source), so this is per-window, not
 // per-submission. 'unknown' = no sample available to classify (e.g. a window
 // with rejects but no surfaced sample).
-export type Env = 'opencode' | 'openmath' | 'unknown'
+export type Env = 'opencode' | 'openmath' | 'logic' | 'unknown'
 
 export interface WindowDetail {
   window: number
@@ -128,6 +128,12 @@ export interface LadderResponse {
   environments?: LadderEnvironment[]
 }
 
+export interface AcceptedWindowSummary {
+  environment: Env
+  selectedCount: number
+  selectedEnvironments: Env[]
+}
+
 export interface MinerResponse {
   source?: string
   generated_at?: string
@@ -138,6 +144,7 @@ export interface MinerResponse {
   window_detail?: WindowDetail[]
   verdicts?: VerdictResponse
   ladderEnvironments?: Record<number, Env>
+  acceptedWindows?: Record<number, AcceptedWindowSummary>
 }
 
 export interface WindowStatus {
@@ -162,6 +169,9 @@ export interface WindowStatus {
   // Per-submission buckets for this window, ordered bottom-up: accepted first,
   // then soft, then hard. Length is min(accepted + soft + hard, MAX_SLOTS_PER_WINDOW).
   slots: Bucket[]
+  // Environment for each corresponding slot. Accepted slots come from the
+  // accepted-rollouts endpoint when available.
+  slotEnvs: Env[]
   // Per-window reject tally (from miner_reject_reasons), rendered as bordered
   // circles in the window column: batch_filled (brown) vs every other reason (red).
   batchFilled: number

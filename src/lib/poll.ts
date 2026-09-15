@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type {
   Env,
+  AcceptedWindowSummary,
   LadderResponse,
   MinerResponse,
   SubmissionVerdict,
@@ -24,6 +25,37 @@ export interface PollState {
   error: Error | null
   lastFetchedAt: number
   inFlight: boolean
+}
+
+interface AcceptedResponse {
+  rollouts?: Array<{ hotkey?: string; env_name?: string }>
+}
+
+function mapEnvironment(environment: string | undefined): Env {
+  if (environment === 'openmathinstruct') return 'openmath'
+  if (environment === 'opencodeinstruct') return 'opencode'
+  if (environment === 'reliquary_logic_v2') return 'logic'
+  return 'unknown'
+}
+
+function acceptedSummary(response: AcceptedResponse, hotkey: string): AcceptedWindowSummary | null {
+  const rollouts = Array.isArray(response.rollouts) ? response.rollouts : []
+  const selectedEnvironments = rollouts
+    .filter((rollout) => rollout.hotkey === hotkey)
+    .map((rollout) => mapEnvironment(rollout.env_name))
+    .filter((environment) => environment !== 'unknown')
+  if (selectedEnvironments.length === 0) {
+    return null
+  }
+  const firstEnvironment = selectedEnvironments[0]
+  const environment = selectedEnvironments.every((item) => item === firstEnvironment)
+    ? firstEnvironment
+    : 'unknown'
+  return {
+    environment,
+    selectedCount: selectedEnvironments.length,
+    selectedEnvironments,
+  }
 }
 
 function dedupeSubmissions(response: VerdictResponse): SubmissionVerdict[] {
@@ -69,6 +101,7 @@ function ladderEnv(response: LadderResponse, hotkey: string): Env {
     if (isInRows || isRejected) {
       if (environment.env_name === 'openmathinstruct') return 'openmath'
       if (environment.env_name === 'opencodeinstruct') return 'opencode'
+      if (environment.env_name === 'reliquary_logic_v2') return 'logic'
     }
   }
   return 'unknown'
@@ -96,6 +129,7 @@ export function useMinerPoll(hotkey: string): PollState {
     setLastFetchedAt(0)
     backoffRef.current = 1
     ladderCacheRef.current = new Map()
+    const acceptedCacheRef = new Map<number, AcceptedWindowSummary>()
 
     const tick = async () => {
       if (cancelled) return
@@ -138,17 +172,30 @@ export function useMinerPoll(hotkey: string): PollState {
           ?? []
         await Promise.all(
           windows.map(async (window) => {
-            if (ladderCacheRef.current.has(window)) return
+            if (ladderCacheRef.current.has(window) && acceptedCacheRef.has(window)) return
             try {
-              const ladderResponse = await fetch(`/api/ladder/${window}`, {
-                signal: ac.signal,
-                cache: 'no-store',
-              })
+              const [ladderResponse, acceptedResponse] = await Promise.all([
+                fetch(`/api/ladder/${window}`, {
+                  signal: ac.signal,
+                  cache: 'no-store',
+                }),
+                fetch(`/api/accepted/${window}`, {
+                  signal: ac.signal,
+                  cache: 'no-store',
+                }),
+              ])
               if (ladderResponse.ok) {
                 ladderCacheRef.current.set(window, ladderEnv(
                   (await ladderResponse.json()) as LadderResponse,
                   hotkey,
                 ))
+              }
+              if (acceptedResponse.ok) {
+                const summary = acceptedSummary(
+                  (await acceptedResponse.json()) as AcceptedResponse,
+                  hotkey,
+                )
+                if (summary) acceptedCacheRef.set(window, summary)
               }
             } catch {
               // Verdict data remains usable if ladder lookup fails.
@@ -156,6 +203,7 @@ export function useMinerPoll(hotkey: string): PollState {
           }),
         )
         combined.ladderEnvironments = Object.fromEntries(ladderCacheRef.current)
+        combined.acceptedWindows = Object.fromEntries(acceptedCacheRef)
         if (cancelled) return
         setData(combined)
         setError(null)

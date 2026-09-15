@@ -30,6 +30,14 @@ export default function ChartsSection({ hotkeys, snapshots }: Props) {
             openmath selected
           </span>
           <span className="legend-item">
+            <span className="swatch" style={{ background: 'var(--logic)' }} />
+            logic selected
+          </span>
+          <span className="legend-item">
+            <span className="swatch" style={{ background: 'var(--accepted)' }} />
+            unknown selected
+          </span>
+          <span className="legend-item">
             <span className="swatch" style={{ background: 'var(--pooled)' }} />
             pooled
           </span>

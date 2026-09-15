@@ -9,14 +9,16 @@ interface Props {
 export default function WindowStrip({ windows, latestWindow }: Props) {
   const first = windows[0]?.window
   const last = windows[windows.length - 1]?.window
-  // Accepted dots are split by environment (opencode green / openmath blue);
-  // env='unknown' falls in with opencode since both render the generic green.
+  // Accepted dots are split by environment; unknown environments use the
+  // generic accepted color.
   const slotCounts = windows.reduce(
     (acc, w) => {
-      for (const s of w.slots) {
+      for (const [index, s] of w.slots.entries()) {
         if (s === 'accepted') {
-          if (w.env === 'openmath') acc.openmath++
-          else if (w.env === 'opencode') acc.opencode++
+          const environment = w.slotEnvs[index] ?? w.env
+          if (environment === 'openmath') acc.openmath++
+          else if (environment === 'opencode') acc.opencode++
+          else if (environment === 'logic') acc.logic++
           else acc.unknown++
         } else if (s === 'pooled') {
           acc.pooled++
@@ -26,7 +28,7 @@ export default function WindowStrip({ windows, latestWindow }: Props) {
       }
       return acc
     },
-    { opencode: 0, openmath: 0, unknown: 0, pooled: 0, soft: 0, hard: 0, blank: 0 },
+    { opencode: 0, openmath: 0, logic: 0, unknown: 0, pooled: 0, soft: 0, hard: 0, blank: 0 },
   )
   const windowsWithSubmissions = windows.filter((w) => w.submitted > 0).length
   return (
@@ -51,6 +53,10 @@ export default function WindowStrip({ windows, latestWindow }: Props) {
         <span className="legend-item">
           <span className="swatch" style={{ background: 'var(--openmath)' }} />
           openmath accepted ({slotCounts.openmath})
+        </span>
+        <span className="legend-item">
+          <span className="swatch" style={{ background: 'var(--logic)' }} />
+          logic accepted ({slotCounts.logic})
         </span>
         <span className="legend-item">
           <span className="swatch" style={{ background: 'var(--accepted)' }} />

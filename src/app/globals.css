@@ -12,10 +12,10 @@
   --hard: #832932;
   --blank: #21262d;
 
-  /* Accepted dots are colored by evaluation environment:
-     opencode = green (same as the generic accepted green), openmath = blue. */
+    /* Accepted dots are colored by evaluation environment. */
   --opencode: #02b83f;
   --openmath: #2073f0;
+  --logic: #f59e0b;
 }
 
 * {
@@ -288,12 +288,15 @@ main {
   /* Default (and env='unknown'): generic accepted green. */
   background: var(--accepted);
 }
-/* Environment-specific accepted colors: opencode green, openmath blue. */
+/* Environment-specific accepted colors. */
 .dot[data-bucket='accepted'][data-env='opencode'] {
   background: var(--opencode);
 }
 .dot[data-bucket='accepted'][data-env='openmath'] {
   background: var(--openmath);
+}
+.dot[data-bucket='accepted'][data-env='logic'] {
+  background: var(--logic);
 }
 .dot[data-bucket='pooled'] {
   background: var(--pooled);
